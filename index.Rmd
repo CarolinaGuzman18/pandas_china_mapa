@@ -1,0 +1,90 @@
+---
+title: "Pandas en China"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(sf)
+library(raster)
+library(rgbif)
+library(protolite)
+library(dplyr)
+library(leaflet)
+
+china_geo <- st_read("https://raw.githubusercontent.com/longwosion/geojson-map-china/master/china.json")
+```
+
+### Chart A
+
+```{r}
+ailuropoda_melanoleuca_gbif <- 
+  occ_search(
+    scientificName = 'Ailuropoda melanoleuca', 
+    country = 'CN',
+    hasCoordinate = TRUE, 
+    hasGeospatialIssue = FALSE,
+    fields = c('scientificName', 'decimalLongitude', 'decimalLatitude'),
+    limit = 1500
+  )
+
+ailuropoda_melanoleuca_sf <- 
+  st_as_sf(ailuropoda_melanoleuca_gbif$data, 
+           coords = c("decimalLongitude", "decimalLatitude"), 
+           crs = 4326
+  )
+
+altitude <- getData("worldclim", var="alt", res=10)
+china_altitud <-
+  altitude %>%
+  crop(china_geo) %>%
+  mask(china_geo)
+
+```
+
+```{r}
+pal <- colorNumeric(
+  c("#F41FEF", "#9C1FF4", "#ECF41F"), 
+  values(china_altitud), 
+  na.color = "transparent"
+)
+
+# Mapa web
+m <- leaflet() %>% 
+  addProviderTiles(providers$Esri.WorldImagery, group = "Imágenes de ESRI") %>% 
+  addProviderTiles(providers$Stamen.TonerLite, group = "Stamen Toner Lite") %>%
+  addProviderTiles(providers$OpenStreetMap.Mapnik, group = "OpenStreetMap") %>%
+  addCircleMarkers(data = ailuropoda_melanoleuca_sf,
+                   stroke = F,
+                   radius = 4,
+                   fillColor = 'black',
+                   fillOpacity = 1,
+                   group = "Panditas",
+                   
+  ) %>%
+  addRasterImage(china_altitud, 
+                 colors = pal, 
+                 opacity = 0.8, 
+                 group = "Altitud"
+  ) %>%
+  addLayersControl(
+    baseGroups = c("OpenStreetMap", "Stamen Toner Lite", "Imágenes de ESRI"),
+    overlayGroups = c("Altitud", "Panditas"),
+    options = layersControlOptions(collapsed = FALSE)    
+  ) %>%
+  addLegend(pal = pal, 
+            values = values(china_altitud), 
+            title = "Altitud"
+  ) %>%
+  addMiniMap(
+    toggleDisplay = TRUE,
+    position = "bottomleft",
+    tiles = providers$Stamen.TonerLite
+  )
+
+m
+```
+
